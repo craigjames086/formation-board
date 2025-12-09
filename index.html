@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Soccer Formation Board – Save & Load Layout</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1b1b1b;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 22px;
+    }
+    #top-bar {
+      width: 800px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    #controls-row1, #controls-row2 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    select, button {
+      padding: 4px 8px;
+      font-size: 14px;
+    }
+    #board-wrapper {
+      position: relative;
+      width: 800px;
+      height: 650px;
+    }
+    #pitch {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 800px;
+      height: 500px;
+      background: #238c3f;
+      border: 4px solid #ffffff;
+      border-radius: 4px;
+      box-sizing: border-box;
+      z-index: 1;
+    }
+    .half-line {
+      position: absolute;
+      height: 4px;
+      width: 100%;
+      background: #fff;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .center-circle {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .box {
+      position: absolute;
+      border: 3px solid #fff;
+      box-sizing: border-box;
+    }
+    .box.home {
+      bottom: 0;
+      left: 25%;
+      width: 50%;
+      height: 120px;
+    }
+    .box.away {
+      top: 0;
+      left: 25%;
+      width: 50%;
+      height: 120px;
+    }
+    #bench-area {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 800px;
+      height: 140px;
+      background: #303030;
+      border-radius: 0 0 4px 4px;
+      padding: 4px 8px;
+      box-sizing: border-box;
+      z-index: 1;
+    }
+    #bench-area h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .player {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #005bbb;
+      border: 2px solid #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: move;
+      user-select: none;
+      box-shadow: 0 0 6px rgba(0,0,0,0.6);
+      z-index: 5;
+    }
+    .player span {
+      pointer-events: none;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .player.editing {
+      cursor: text;
+    }
+    #instructions {
+      width: 800px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #ccc;
+    }
+    #preset-status {
+      font-size: 12px;
+      color: #a0ffa0;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Drag-and-Drop Soccer Formation Board (Save & Load Layout)</h1>
+
+  <div id="top-bar">
+    <div id="controls-row1">
+      <div>
+        Formation:
+        <select id="formationSelect">
+          <option value="4-3-3">4-3-3</option>
+          <option value="4-2-3-1">4-2-3-1</option>
+          <option value="4-4-2">4-4-2</option>
+          <option value="3-5-2">3-5-2</option>
+        </select>
+      </div>
+      <div>
+        <button id="resetBtn">Reset Formation</button>
+      </div>
+    </div>
+
+    <div id="controls-row2">
+      <div>
+        Preset:
+        <select id="presetSelect">
+          <option value="0">Preset 1</option>
+          <option value="1">Preset 2</option>
+          <option value="2">Preset 3</option>
+          <option value="3">Preset 4</option>
+          <option value="4">Preset 5</option>
+        </select>
+        <button id="savePresetBtn">Save to Preset</button>
+        <button id="loadPresetBtn">Load Preset</button>
+        <span id="preset-status"></span>
+      </div>
+      <div>
+        <button id="downloadLayoutBtn">Download Layout (JSON)</button>
+        <button id="loadLayoutBtn">Load Layout from File</button>
+        <input type="file" id="layoutFileInput" accept=".json" style="display:none" />
+      </div>
+    </div>
+  </div>
+
+  <div id="board-wrapper">
+    <div id="pitch">
+      <div class="half-line"></div>
+      <div class="center-circle"></div>
+      <div class="box home"></div>
+      <div class="box away"></div>
+    </div>
+    <div id="bench-area">
+      <h2>Bench – drag players on/off the pitch</h2>
+    </div>
+  </div>
+
+  <div id="instructions">
+    <strong>How to use:</strong>
+    Choose a base formation and hit <em>Reset Formation</em> to lay out the XI.
+    Drag blue circles to show your structure. Double-click a circle to rename it (player name or role).<br>
+    Use presets for quick tactical variations while the page is open.<br>
+    Use <em>Download Layout (JSON)</em> to save your current positions and names to a file, and
+    <em>Load Layout from File</em> to bring them back next time.
+  </div>
+
+  <script>
+    const board = document.getElementById('board-wrapper');
+    const pitch = document.getElementById('pitch');
+    const benchArea = document.getElementById('bench-area');
+    const formationSelect = document.getElementById('formationSelect');
+    const resetBtn = document.getElementById('resetBtn');
+    const presetSelect = document.getElementById('presetSelect');
+    const savePresetBtn = document.getElementById('savePresetBtn');
+    const loadPresetBtn = document.getElementById('loadPresetBtn');
+    const presetStatus = document.getElementById('preset-status');
+    const downloadLayoutBtn = document.getElementById('downloadLayoutBtn');
+    const loadLayoutBtn = document.getElementById('loadLayoutBtn');
+    const layoutFileInput = document.getElementById('layoutFileInput');
+
+    const formations = {
+      "4-3-3": [
+        { label: "GK", x: 50, y: 88 },
+        { label: "LB", x: 18, y: 70 },
+        { label: "LCB", x: 37, y: 70 },
+        { label: "RCB", x: 63, y: 70 },
+        { label: "RB", x: 82, y: 70 },
+        { label: "DM", x: 50, y: 58 },
+        { label: "LM", x: 30, y: 52 },
+        { label: "RM", x: 70, y: 52 },
+        { label: "LW", x: 25, y: 35 },
+        { label: "ST", x: 50, y: 30 },
+        { label: "RW", x: 75, y: 35 }
+      ],
+      "4-2-3-1": [
+        { label: "GK", x: 50, y: 88 },
+        { label: "LB", x: 18, y: 72 },
+        { label: "LCB", x: 37, y: 72 },
+        { label: "RCB", x: 63, y: 72 },
+        { label: "RB", x: 82, y: 72 },
+        { label: "DM1", x: 40, y: 60 },
+        { label: "DM2", x: 60, y: 60 },
+        { label: "LW", x: 25, y: 45 },
+        { label: "CAM", x: 50, y: 42 },
+        { label: "RW", x: 75, y: 45 },
+        { label: "ST", x: 50, y: 30 }
+      ],
+      "4-4-2": [
+        { label: "GK", x: 50, y: 88 },
+        { label: "LB", x: 18, y: 70 },
+        { label: "LCB", x: 37, y: 70 },
+        { label: "RCB", x: 63, y: 70 },
+        { label: "RB", x: 82, y: 70 },
+        { label: "LM", x: 22, y: 52 },
+        { label: "LCM", x: 38, y: 52 },
+        { label: "RCM", x: 62, y: 52 },
+        { label: "RM", x: 78, y: 52 },
+        { label: "ST1", x: 42, y: 35 },
+        { label: "ST2", x: 58, y: 35 }
+      ],
+      "3-5-2": [
+        { label: "GK", x: 50, y: 88 },
+        { label: "LCB", x: 30, y: 72 },
+        { label: "CB", x: 50, y: 72 },
+        { label: "RCB", x: 70, y: 72 },
+        { label: "LWB", x: 20, y: 55 },
+        { label: "RWB", x: 80, y: 55 },
+        { label: "LCM", x: 38, y: 52 },
+        { label: "CM", x: 50, y: 45 },
+        { label: "RCM", x: 62, y: 52 },
+        { label: "ST1", x: 42, y: 32 },
+        { label: "ST2", x: 58, y: 32 }
+      ]
+    };
+
+    const benchLayout = [
+      { label: "SUB1", x: 10, y: 90 },
+      { label: "SUB2", x: 23, y: 90 },
+      { label: "SUB3", x: 36, y: 90 },
+      { label: "SUB4", x: 49, y: 90 },
+      { label: "SUB5", x: 62, y: 90 },
+      { label: "SUB6", x: 75, y: 90 },
+      { label: "SUB7", x: 88, y: 90 }
+    ];
+
+    const players = [];
+    const presets = [null, null, null, null, null];
+
+    function createPlayerCircle(label) {
+      const div = document.createElement('div');
+      div.className = 'player';
+      const span = document.createElement('span');
+      span.textContent = label;
+      div.appendChild(span);
+      makeDraggable(div);
+      enableLabelEditing(div, span);
+      board.appendChild(div);
+      return div;
+    }
+
+    function setPositionPercent(el, xPercent, yPercent) {
+      const boardWidth = board.clientWidth;
+      const boardHeight = board.clientHeight;
+      const x = xPercent / 100 * boardWidth - el.clientWidth / 2;
+      const y = yPercent / 100 * boardHeight - el.clientHeight / 2;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+    }
+
+    function applyFormation(name) {
+      const formation = formations[name];
+      if (!formation) return;
+      for (let i = 0; i < formation.length; i++) {
+        const f = formation[i];
+        const p = players[i];
+        if (!p) continue;
+        p.querySelector('span').textContent = f.label;
+        setPositionPercent(p, f.x, f.y);
+      }
+      for (let i = 0; i < benchLayout.length; i++) {
+        const b = benchLayout[i];
+        const idx = 11 + i;
+        const p = players[idx];
+        if (!p) continue;
+        p.querySelector('span').textContent = b.label;
+        setPositionPercent(p, b.x, b.y);
+      }
+    }
+
+    function makeDraggable(element) {
+      let offsetX = 0, offsetY = 0, isDown = false;
+      element.addEventListener('mousedown', function(e) {
+        if (element.classList.contains('editing')) return;
+        isDown = true;
+        const rect = element.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        document.body.style.cursor = 'grabbing';
+      });
+      document.addEventListener('mousemove', function(e) {
+        if (!isDown) return;
+        const boardRect = board.getBoundingClientRect();
+        let x = e.clientX - boardRect.left - offsetX;
+        let y = e.clientY - boardRect.top - offsetY;
+        x = Math.max(0, Math.min(x, board.clientWidth - element.clientWidth));
+        y = Math.max(0, Math.min(y, board.clientHeight - element.clientHeight));
+        element.style.left = x + 'px';
+        element.style.top = y + 'px';
+      });
+      document.addEventListener('mouseup', function() {
+        if (isDown) {
+          isDown = false;
+          document.body.style.cursor = 'default';
+        }
+      });
+    }
+
+    function enableLabelEditing(element, span) {
+      element.addEventListener('dblclick', function() {
+        element.classList.add('editing');
+        const newLabel = prompt('Enter label or player name:', span.textContent);
+        if (newLabel !== null && newLabel.trim() !== '') {
+          span.textContent = newLabel.trim();
+        }
+        element.classList.remove('editing');
+      });
+    }
+
+    function captureCurrentState() {
+      const boardRect = board.getBoundingClientRect();
+      return players.map(p => {
+        const rect = p.getBoundingClientRect();
+        return {
+          label: p.querySelector('span').textContent,
+          x: (rect.left - boardRect.left) / board.clientWidth,
+          y: (rect.top - boardRect.top) / board.clientHeight
+        };
+      });
+    }
+
+    function applyState(state) {
+      if (!state || state.length === 0) return;
+      state.forEach((s, i) => {
+        if (!players[i]) return;
+        const el = players[i];
+        const span = el.querySelector('span');
+        span.textContent = s.label;
+        el.style.left = (s.x * board.clientWidth) + 'px';
+        el.style.top = (s.y * board.clientHeight) + 'px';
+      });
+    }
+
+    function showPresetStatus(message, isError = false) {
+      presetStatus.textContent = message;
+      presetStatus.style.color = isError ? '#ffb3b3' : '#a0ffa0';
+      if (message) {
+        setTimeout(() => { presetStatus.textContent = ''; }, 2500);
+      }
+    }
+
+    function initPlayers() {
+      const base = formations["4-3-3"];
+      for (let i = 0; i < 11; i++) {
+        const p = createPlayerCircle(base[i].label);
+        players.push(p);
+      }
+      for (let i = 0; i < benchLayout.length; i++) {
+        const b = benchLayout[i];
+        const p = createPlayerCircle(b.label);
+        players.push(p);
+      }
+      applyFormation("4-3-3");
+    }
+
+    function downloadLayout() {
+      const state = captureCurrentState();
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'formation_layout.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function loadLayoutFromFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const state = JSON.parse(e.target.result);
+          applyState(state);
+          showPresetStatus('Layout loaded from file');
+        } catch (err) {
+          showPresetStatus('Failed to load layout (invalid file)', true);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    formationSelect.addEventListener('change', () => {
+      applyFormation(formationSelect.value);
+      showPresetStatus('');
+    });
+
+    resetBtn.addEventListener('click', () => {
+      applyFormation(formationSelect.value);
+      showPresetStatus('Formation reset to base layout');
+    });
+
+    savePresetBtn.addEventListener('click', () => {
+      const idx = parseInt(presetSelect.value, 10);
+      presets[idx] = captureCurrentState();
+      showPresetStatus('Saved to Preset ' + (idx + 1));
+    });
+
+    loadPresetBtn.addEventListener('click', () => {
+      const idx = parseInt(presetSelect.value, 10);
+      if (!presets[idx]) {
+        showPresetStatus('Preset ' + (idx + 1) + ' is empty', true);
+        return;
+      }
+      applyState(presets[idx]);
+      showPresetStatus('Loaded Preset ' + (idx + 1));
+    });
+
+    downloadLayoutBtn.addEventListener('click', () => {
+      downloadLayout();
+    });
+
+    loadLayoutBtn.addEventListener('click', () => {
+      layoutFileInput.click();
+    });
+
+    layoutFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        loadLayoutFromFile(file);
+      }
+      layoutFileInput.value = '';
+    });
+
+    initPlayers();
+  </script>
+</body>
+</html>
